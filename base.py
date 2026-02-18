@@ -13,6 +13,7 @@ EdgeClassify=functions.EdgeDetect.EdgeClassify
 #==导入模型---------------------
 ocr=config.ocr
 colors=config.colors
+edge_detect_config=config.EDGE_DETECT_CONFIG
 
 #====正式逻辑-------------------------------------
 
@@ -89,6 +90,7 @@ def Detect(img,index):
             )
             rec.add(det)
             run_result.add_detection(det)
+    
     lines = EdgeDetect(img)
     if lines is not None:
         for line in lines:

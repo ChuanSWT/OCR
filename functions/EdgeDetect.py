@@ -5,10 +5,10 @@ from paddleocr import PaddleOCR
 import numpy as np
 
 #====准备工作-------------------------------------
-#创建侵蚀核（水平方向，长宽比约为3:1）
+#创建侵蚀核
 kernel = cv2.getStructuringElement(
     cv2.MORPH_RECT,
-    (2, 1)
+    (3, 1)
 )
 
 #霍夫直线变换
@@ -17,23 +17,20 @@ def HoughLinesP(edges):
     edges,
     rho=1,
     theta=np.pi / 180,
-    threshold=40,              # 降低阈值以检测更多水平线
-    minLineLength=30,          # 降低最小长度阈值
-    maxLineGap=15              # 增加最大间隙容许值
+    threshold=60,
+    minLineLength=50,
+    maxLineGap=10
     )
     return lines
 
 #==逻辑实现------------------------------
 def EdgeDetect(frame):
     img=frame.copy()
-    #检测边缘(canny) - 优化参数以更好地检测水平边缘
+    #检测边缘(canny)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # 应用高斯模糊以减少噪声
-    gray_blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    # 降低Canny阈值以获得更多边缘信息
-    img_edge = cv2.Canny(gray_blur, threshold1=50, threshold2=150)
+    img_edge = cv2.Canny(gray, threshold1=100, threshold2=200)
 
-    #横向侵蚀 以提取横边（更强的水平腐蚀）
+    #横向侵蚀 以提取横边
     _, img_edge = cv2.threshold(img_edge, 128, 255, cv2.THRESH_BINARY)
     img_edge_eroded = cv2.erode(img_edge, kernel, iterations=1)
     
