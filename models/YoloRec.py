@@ -91,3 +91,35 @@ class YoloRec:
 
     def to_dicts(self) -> List[Dict]:
         return [d.as_dict() for d in self.detections]
+
+
+@dataclass
+class DetectRunResult:
+    """Stores the outputs of a single `Detect` run.
+
+    Attributes:
+    - recs: a `YoloRec` containing OCR detections
+    - lines: list of line segments returned by `EdgeDetect` (each as a 4-tuple)
+    - meta: optional metadata dictionary (e.g., image index)
+    """
+    recs: YoloRec
+    lines: Optional[List[Tuple[int, int, int, int]]] = None
+    meta: Optional[Dict] = None
+
+    def add_line(self, line: Tuple[int, int, int, int]) -> None:
+        if self.lines is None:
+            self.lines = []
+        self.lines.append(line)
+
+    def add_detection(self, det: DetectionResult) -> None:
+        self.recs.add(det)
+
+    def to_dict(self) -> Dict:
+        return {
+            "recs": self.recs.to_dicts(),
+            "lines": [tuple(l) for l in (self.lines or [])],
+            "meta": self.meta or {},
+        }
+
+    def __repr__(self) -> str:
+        return f"DetectRunResult(recs={len(self.recs)}, lines={len(self.lines) if self.lines else 0}, meta={self.meta})"
