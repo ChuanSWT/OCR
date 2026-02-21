@@ -28,7 +28,21 @@ def EdgeDetect(frame):
     img=frame.copy()
     #检测边缘(canny)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_edge = cv2.Canny(gray, threshold1=100, threshold2=200)
+    
+    # 高斯模糊：降低噪声，为Canny做准备
+    gray_blurred = cv2.GaussianBlur(gray, (5, 5), 1.0)
+    
+    # Canny边缘检测
+    img_edge = cv2.Canny(gray_blurred, threshold1=80, threshold2=160)
+    
+    # 锐化处理：增强边缘
+    kernel_sharp = np.array([[-1, -1, -1],
+                             [-1,  9, -1],
+                             [-1, -1, -1]], dtype=np.float32)
+    img_edge_sharpened = cv2.filter2D(img_edge, -1, kernel_sharp)
+    # 将锐化后的结果限制在0-255范围内
+    img_edge_sharpened = np.clip(img_edge_sharpened, 0, 255).astype(np.uint8)
+    img_edge = img_edge_sharpened
 
     #横向侵蚀 以提取横边
     _, img_edge = cv2.threshold(img_edge, 128, 255, cv2.THRESH_BINARY)

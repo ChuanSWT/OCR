@@ -25,16 +25,16 @@ def Detect(img,index):
 
     #gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     output = img.copy()
-    #读取标签文件
-    label_path=f"data/wires/labels/video_{str(index)}.txt"
+    # 读取标签文件（使用相对路径配置）
+    label_path = config.WIRES_LABELS_DIR / f"video_{index}.txt"
 
-    if not os.path.exists(label_path):
-        out_path = f"data/wires/outputs/{index}.png"
-        cv2.imwrite(out_path, output)
-        run_result.meta["output_path"] = out_path
+    if not label_path.exists():
+        out_path = config.WIRES_OUTPUTS_DIR / f"{index}.png"
+        cv2.imwrite(str(out_path), output)
+        run_result.meta["output_path"] = str(out_path)
         return run_result
 
-    df = pd.read_csv(f"data/wires/labels/video_{str(index)}.txt", sep=" ",header=None)
+    df = pd.read_csv(str(label_path), sep=" ", header=None)
     
     # 第一步：收集所有需要识别的区域及其信息
     crops_data = []
@@ -77,6 +77,29 @@ def Detect(img,index):
             #    continue
             
             # 保存检测结果到 YoloRec
+            # 从 OCR 结果中选取置信度最高的识别文本及其置信度（若有）
+            best_label = None
+            best_confidence = None
+            if result:
+                rec_scores = result.get('rec_scores')
+                rec_texts = result.get('rec_texts', [])
+                if rec_scores:
+                    try:
+                        # 选择置信度最高的索引（支持列表或可转为 float 的元素）
+                        max_i = max(range(len(rec_scores)), key=lambda i: float(rec_scores[i]))
+                        best_confidence = float(rec_scores[max_i])
+                        best_label = rec_texts[max_i] if max_i < len(rec_texts) else None
+                    except Exception:
+                        # 退化到第一个识别结果
+                        best_label = rec_texts[0] if rec_texts else None
+                        try:
+                            best_confidence = float(rec_scores[0]) if rec_scores else None
+                        except Exception:
+                            best_confidence = None
+                elif rec_texts:
+                    best_label = rec_texts[0]
+                    best_confidence = None
+
             det = DetectionResult(
                 x_center=data['x_center'],
                 y_center=data['y_center'],
@@ -84,9 +107,9 @@ def Detect(img,index):
                 y1=data['y1'],
                 x2=data['x2'],
                 y2=data['y2'],
-                confidence=float(result.get("rec_scores", [None])[0]) if result.get("rec_scores") else None,
+                confidence=best_confidence,
                 class_id=data['yolo_type'],
-                label=result.get('rec_texts', [None])[0] if result.get('rec_texts') else None,
+                label=best_label,
             )
             rec.add(det)
             run_result.add_detection(det)
