@@ -69,3 +69,35 @@ def extend_line_to_right(x1, y1, x2, y2, frame_width):
             x2_ext, y2_ext = int(x2), int(y2)
     
     return x1_ext, y1_ext, x2_ext, y2_ext
+
+
+def extend_line_to_left(x1, y1, x2, y2, frame_width):
+    """
+    将线段向左延长到画面左边界 (x=0)。
+
+    参数:
+        x1, y1: 线段起点坐标
+        x2, y2: 线段终点坐标
+        frame_width: 画面宽度（仅用于签名一致性）
+
+    返回:
+        tuple: (x1_ext, y1_ext, x2_ext, y2_ext) 延长后的线段端点坐标，均为整数
+    """
+    # 如果线段是垂直线
+    if abs(x2 - x1) < 1e-6:
+        x1_ext, y1_ext = x1, y1
+        x2_ext, y2_ext = x2, y2
+    else:
+        slope = (y2 - y1) / (x2 - x1)
+        # 向左延长到 x = 0
+        x_left = 0
+        if x2 >= x_left:
+            # 以 x2 为基准向左延伸到 x=0，计算对应的 y
+            y_left = y2 + slope * (x_left - x2)
+            x1_ext, y1_ext = int(x1), int(y1)
+            x2_ext, y2_ext = int(x_left), int(y_left)
+        else:
+            x1_ext, y1_ext = int(x1), int(y1)
+            x2_ext, y2_ext = int(x2), int(y2)
+
+    return x1_ext, y1_ext, x2_ext, y2_ext

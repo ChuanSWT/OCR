@@ -25,8 +25,9 @@ def Detect(img,index):
 
     #gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     output = img.copy()
-    # 读取标签文件（使用相对路径配置）
-    label_path = config.WIRES_LABELS_DIR / f"video_{index}.txt"
+    # 读取标签文件（使用相对路径配置），标签文件名基于配置中的视频名
+    video_stem = config.VIDEO_PATH.stem
+    label_path = config.WIRES_LABELS_DIR / f"{video_stem}_{index}.txt"
 
     if not label_path.exists():
         out_path = config.WIRES_OUTPUTS_DIR / f"{index}.png"

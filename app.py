@@ -14,11 +14,26 @@ from functions.ocr_history import find_best_historical_label
 #==导入函数---------------------
 Detect=base.Detect
 from functions.EdgeDetect import EdgeClassify
-from functions.Lines import should_skip_line, extend_line_to_right
+from functions.Lines import should_skip_line, extend_line_to_right, extend_line_to_left
+from functions.labels.draw_labels import draw_type1_with_leader_line
 #==导入模型和配置---------------------
 ocr=config.ocr
 colors=config.colors
 video_config=config.VIDEO_CONFIG
+
+# ====设置运行输出文件夹-------------------------------------
+run_info = config.setup_run_directory()
+run_dir = run_info['run_dir']
+frames_dir = run_info['frames_dir']
+output_video_path = run_info['output_video']
+csv_output_path = run_info['csv_path']
+run_number = run_info['run_number']
+
+print(f"开始新的运行 (run_{run_number})")
+print(f"输出文件夹: {run_dir}")
+print(f"帧输出文件夹: {frames_dir}")
+print(f"输出视频: {output_video_path}")
+print(f"输出CSV: {csv_output_path}\n")
 
 #导入视频和元数据
 cap = cv2.VideoCapture(str(config.VIDEO_PATH))
@@ -29,7 +44,7 @@ fps    = cap.get(cv2.CAP_PROP_FPS)
 
 #获取编码器和写出视频流
 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-writer = cv2.VideoWriter(str(config.OUTPUT_VIDEO), fourcc, fps, (width, height))
+writer = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
 
 # 初始化数据收集列表
 data_records = []
@@ -90,9 +105,14 @@ while True:
     mid = height / 2.0
     purple = (255, 0, 255)
     cv2.line(output, (0, int(mid)), (width, int(mid)), purple, 2)
+    
+    # ====收集类型0和类型2的识别框信息，以及先计算位置关系---------------------
     # 收集所有类型0的识别中心点和标签
     type0_detections = []
+    type2_detections = []
     blue = (255, 0, 0)
+    green = (0, 255, 0)
+    
     for det in rst.recs:
         if det.class_id == 0:
             type0_detections.append({
@@ -103,25 +123,67 @@ while True:
             # 绘制类型0识别框的中心点（较小的蓝色点）
             center_x, center_y = int(det.x_center), int(det.y_center)
             cv2.circle(output, (center_x, center_y), 3, blue, -1)  # 填充圆形，半径为3
-        elif det.class_id == 1:
-            # 类型1：使用紫色绘制识别框，并在框上侧用紫色标注OCR识别结果
+        elif det.class_id == 2:
+            type2_detections.append({
+                'x': det.x_center,
+                'y': det.y_center,
+                'label': det.label or "Unknown"
+            })
+    
+    # ====计算类型0和类型2的位置关系（用于类型1的引出线方向）---------------------
+    # 统计类型0和类型2的数量
+    type0_count = len(type0_detections)
+    type2_count = len(type2_detections)
+    
+    # 计算平均x坐标
+    type0_avg_x = sum([det['x'] for det in type0_detections]) / type0_count if type0_count > 0 else 0
+    type2_avg_x = sum([det['x'] for det in type2_detections]) / type2_count if type2_count > 0 else 0
+    
+    # 判断位置关系（用于类型1的绘制方向）
+    position_text = ""
+    if type0_count > 0 and type2_count > 0:
+        if type2_avg_x < type0_avg_x:
+            position_text = "left"
+        else:
+            position_text = "right"
+    
+    # ====绘制类型1识别框和文本（使用计算出的位置关系）---------------------
+    for det in rst.recs:
+        if det.class_id == 1:
+            # 类型1：使用紫色绘制识别框，并使用引出线连接文本
             bx1, by1, bx2, by2 = det.to_xyxy()
             cv2.rectangle(output, (int(bx1), int(by1)), (int(bx2), int(by2)), purple, 2)
             label = det.label or ""
-            text_x = int(bx1)
-            text_y = int(by1) - 5  # 在框上方5个像素
-            # 如果文本会超出图片顶端，则改为放在框内上方
-            if text_y < 10:
-                text_y = int(by1) + 15
-            cv2.putText(
-                output,
-                label,
-                (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                purple,
-                2,
-            )
+            
+            # 根据position_text确定文本和引出线的方向
+            if position_text:
+                draw_type1_with_leader_line(
+                    output,
+                    text_color=purple,
+                    line_color=purple,
+                    position=position_text,
+                    type1_box=(bx1, by1, bx2, by2),
+                    ocr_text=label,
+                    font_scale=0.6,
+                    thickness=2,
+                    line_thickness=2,
+                )
+            else:
+                # 如果无法确定位置关系，使用默认的绘制方式
+                text_x = int(bx1)
+                text_y = int(by1) - 5  # 在框上方5个像素
+                # 如果文本会超出图片顶端，则改为放在框内上方
+                if text_y < 10:
+                    text_y = int(by1) + 15
+                cv2.putText(
+                    output,
+                    label,
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    purple,
+                    2,
+                )
     
     #拿到边缘检测结果
     edge_lines = rst.lines or []
@@ -172,8 +234,12 @@ while True:
                     if lx_min >= bx1 and ly_min >= by1 and lx_max <= bx2 and ly_max <= by2:
                         color = (0, 255, 0)
                         
-                        # 使用函数将线段向右延长到画面右边
-                        x1_ext, y1_ext, x2_ext, y2_ext = extend_line_to_right(x1, y1, x2, y2, width)
+                        # 使用函数将线段根据 position_text 延长到画面边缘
+                        # 规则：若 position_text == 'left' 则向右延长；若为 'right' 则向左延长
+                        if position_text == 'right':
+                            x1_ext, y1_ext, x2_ext, y2_ext = extend_line_to_left(x1, y1, x2, y2, width)
+                        else:
+                            x1_ext, y1_ext, x2_ext, y2_ext = extend_line_to_right(x1, y1, x2, y2, width)
                         cv2.line(output, (x1_ext, y1_ext), (x2_ext, y2_ext), color, 2)
                         
                         # 寻找最近的类型0识别中心点
@@ -275,8 +341,39 @@ while True:
             red = (0, 0, 255)
             cv2.line(output, (int(x1), int(y1)), (int(x2), int(y2)), red, 2)
     
+    # ====在画面左上角打印类型0和类型2的位置关系信息---------------------
+    # 在画面左上角打印信息
+    position_color = (0, 255, 255)  # 黄色
+    if position_text:
+
+        # 绘制背景矩形以提高文字可见性
+        text_size = cv2.getTextSize(position_text, cv2.FONT_HERSHEY_SIMPLEX, 2, 3)[0]
+        cv2.rectangle(output, (5, 5), (5 + text_size[0] + 10, 5 + text_size[1] + 10), (0, 0, 0), -1)
+        # 绘制文字
+        cv2.putText(
+            output,
+            position_text,
+            (10, 35),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            position_color,
+            3
+        )
     
-    out_file = config.WIRES_OUTPUTS_DIR / f"{index}.png"
+    # 在左上角第二行打印统计信息
+    stats_text = f"Type0: {type0_count} | Type2: {type2_count}"
+    stats_color = (255, 255, 255)  # 白色
+    cv2.putText(
+        output,
+        stats_text,
+        (10, 80),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        stats_color,
+        2
+    )
+    
+    out_file = frames_dir / f"{index}.png"
     cv2.imwrite(str(out_file), output)
     writer.write(output)
     # 将本帧的原始识别结果加入历史（用于后续帧的回溯替换）
@@ -296,9 +393,11 @@ cv2.destroyAllWindows()
 # 导出数据到CSV
 if data_records:
     df = pd.DataFrame(data_records)
-    csv_filename = config.CSV_PATH
-    df.to_csv(str(csv_filename), index=False, encoding='utf-8-sig')
-    print(f"\n数据已导出到 {csv_filename}")
+    df.to_csv(str(csv_output_path), index=False, encoding='utf-8-sig')
+    print(f"\n数据已导出到 {csv_output_path}")
     print(f"总共记录了 {len(data_records)} 条线段-识别框对应关系")
 else:
     print("没有有效的数据记录")
+
+print(f"\n运行 (run_{run_number}) 已完成！")
+print(f"所有输出文件已保存到: {run_dir}")
